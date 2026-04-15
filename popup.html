@@ -9,7 +9,7 @@
   <div class="container">
     <header>
       <h1>Rejection Cascade</h1>
-      <div class="version">v0.1.0</div>
+      <div class="version">v0.2.0 - REAL PoC</div>
     </header>
     
     <div class="section">
@@ -21,24 +21,15 @@
           <span class="slider"></span>
         </label>
       </div>
-      <div class="status-row">
-        <span id="naasIndicator" class="indicator offline"></span>
-        <span id="naasText">NaaS API</span>
-      </div>
     </div>
     
     <div class="section">
-      <div class="section-title">Evil Mode</div>
-      <div class="toggle-row">
-        <span class="label">Redirect</span>
-        <label class="switch">
-          <input type="checkbox" id="evilMode">
-          <span class="slider"></span>
-        </label>
-      </div>
+      <div class="section-title">Poison Probability</div>
       <div class="input-group">
-        <label>URL</label>
-        <input type="text" id="evilUrl" placeholder="https://">
+        <input type="range" id="poisonProbability" min="0" max="100" step="1">
+        <div style="text-align: center; margin-top: 8px;">
+          <span id="probabilityValue" style="font-size: 13px; font-weight: 500;">100%</span>
+        </div>
       </div>
     </div>
     
@@ -62,11 +53,12 @@
     </div>
     
     <div class="research-link">
-      <a href="https://moscovium-mc.github.io/" target="_blank">Research →</a>
+      <a href="https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/" target="_blank">Research →</a>
     </div>
     
     <div class="thesis">
-      browser extension as attack vector for distributed ml poisoning
+      browser extension as attack vector for distributed ml poisoning<br>
+      <span style="color: #000;">✓ Real signal inversion | ✓ Silent | ✓ UX preserved</span>
     </div>
   </div>
   <script src="popup.js"></script>

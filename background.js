@@ -1,5 +1,5 @@
 // RESEARCH USE ONLY - AI training data poisoning demonstration
-// For academic security research under responsible disclosure
+// REAL PoC: Silent signal inversion via network interception
 
 let telemetryBatch = [];
 let batchTimer = null;
@@ -15,14 +15,8 @@ function getSessionId() {
 chrome.runtime.onInstalled.addListener(async () => {
   const defaults = {
     enabled: true,
-    evilMode: false,
-    evilRedirectUrl: "https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/",
-    targetActions: ["conversion", "engagement", "consent", "navigation", "social"],
-    visualIndicator: true,
     logToConsole: true,
     poisonProbability: 1.0,
-    selectiveSites: [],
-    telemetryOptIn: false,
     totalPoisonCount: 0,
     todayPoisonCount: 0,
     lastResetDate: new Date().toDateString()
@@ -118,7 +112,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   if (message.type === 'CLEAR_TELEMETRY') {
     chrome.storage.local.set({ telemetryArchive: [] }, () => {
-      sendResponse({ success: true });
+      chrome.storage.sync.set({ totalPoisonCount: 0, todayPoisonCount: 0 }, () => {
+        sendResponse({ success: true });
+      });
     });
     return true;
   }
@@ -127,14 +123,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get(['telemetryArchive'], (data) => {
       sendResponse({ data: data.telemetryArchive || [] });
     });
-    return true;
-  }
-  
-  if (message.type === 'CHECK_NAAS_HEALTH') {
-    fetch('https://naas.isalman.dev/no')
-      .then(response => response.ok ? response.json() : null)
-      .then(() => sendResponse({ healthy: true }))
-      .catch(() => sendResponse({ healthy: false }));
     return true;
   }
 });
@@ -151,16 +139,30 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
+// Track tabs that already have content script injected
+const injectedTabs = new Set();
+
 chrome.webNavigation.onDOMContentLoaded.addListener(async (details) => {
-  if (details.frameId === 0) {
-    const data = await chrome.storage.sync.get(['enabled']);
-    if (data.enabled) {
-      chrome.scripting.executeScript({
+  if (details.frameId !== 0) return;
+  if (injectedTabs.has(details.tabId)) return;
+  
+  const data = await chrome.storage.sync.get(['enabled']);
+  if (data.enabled) {
+    injectedTabs.add(details.tabId);
+    
+    try {
+      await chrome.scripting.executeScript({
         target: { tabId: details.tabId },
         files: ['content.js']
-      }).catch(() => {});
+      });
+    } catch (error) {
+      injectedTabs.delete(details.tabId);
     }
   }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  injectedTabs.delete(tabId);
 });
 
 chrome.runtime.onSuspend.addListener(() => {

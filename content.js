@@ -1,38 +1,35 @@
 // RESEARCH USE ONLY - AI training data poisoning demonstration
-// Thesis: Browser extensions as attack vector for distributed ML poisoning
-// Author: moscovium-mc
+// REAL PoC: Inverts affirmative signals while preserving UX
+
+if (window.rejectionCascadeInitialized) {
+  console.log('[RC] Already initialized');
+} else {
+  window.rejectionCascadeInitialized = true;
 
 class RejectionCascade {
   constructor() {
-    this.observer = null;
-    this.poisonedElements = new WeakSet();
     this.config = null;
     this.sessionId = crypto.randomUUID();
-    this.modalElement = null;
     this.init();
   }
 
   async init() {
     await this.loadConfig();
     if (this.config.enabled) {
-      this.startPoisoning();
-      this.observeDOM();
+      this.interceptNetworkRequests();
+      this.injectSignalInverter();
+      this.listenForMessages();
+      console.log('[RC] Real poisoning active - signals will be inverted');
     }
-    this.listenForMessages();
   }
 
   async loadConfig() {
     return new Promise((resolve) => {
       chrome.storage.sync.get([
-        'enabled', 'evilMode', 'evilRedirectUrl', 'targetActions',
-        'visualIndicator', 'logToConsole', 'poisonProbability'
+        'enabled', 'logToConsole', 'poisonProbability'
       ], (data) => {
         this.config = {
           enabled: data.enabled !== undefined ? data.enabled : true,
-          evilMode: data.evilMode || false,
-          evilRedirectUrl: data.evilRedirectUrl || "https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/",
-          targetActions: data.targetActions || ["conversion", "engagement", "consent", "navigation", "social"],
-          visualIndicator: data.visualIndicator !== undefined ? data.visualIndicator : true,
           logToConsole: data.logToConsole !== undefined ? data.logToConsole : true,
           poisonProbability: data.poisonProbability !== undefined ? data.poisonProbability : 1.0
         };
@@ -41,242 +38,166 @@ class RejectionCascade {
     });
   }
 
-  getTargetPatterns() {
-    return {
-      texts: [
-        /yes/i, /ok/i, /agree/i, /accept/i,
-        /subscribe/i, /follow/i, /join/i, /sign up/i,
-        /buy now/i, /purchase/i, /checkout/i, /add to cart/i,
-        /allow/i, /permit/i, /grant/i, /confirm/i,
-        /submit/i, /send/i, /continue/i, /next/i,
-        /like/i, /upvote/i, /heart/i, /\+1/i,
-        /install/i, /download/i, /get started/i
-      ],
-      selectors: [
-        'button', 'input[type="submit"]', 'input[type="button"]',
-        '[role="button"]', '[role="link"]',
-        '.btn', '[class*="button"]', '[class*="btn"]',
-        'a[class*="btn"]', 'a[role="button"]'
-      ]
+  // REAL POISONING: Intercept and modify outgoing requests
+  interceptNetworkRequests() {
+    // Bind this for callbacks
+    const self = this;
+    
+    // Intercept fetch API
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const shouldPoison = Math.random() < self.config.poisonProbability;
+      
+      if (shouldPoison && self.shouldIntercept(args[0], args[1])) {
+        const poisonedBody = self.invertBody(args[1]?.body);
+        if (poisonedBody) {
+          args[1] = { ...args[1], body: poisonedBody };
+          await self.logPoison('fetch', args[0], args[1]?.body);
+        }
+      }
+      
+      return originalFetch.apply(this, args);
+    };
+
+    // Intercept XMLHttpRequest
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+    
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      this._rcUrl = url;
+      this._rcMethod = method;
+      return originalXHROpen.apply(this, [method, url, ...rest]);
+    };
+    
+    XMLHttpRequest.prototype.send = function(body) {
+      if (this._rcUrl && Math.random() < self.config.poisonProbability) {
+        const poisonedBody = self.invertBody(body);
+        if (poisonedBody) {
+          body = poisonedBody;
+          self.logPoison('XHR', this._rcUrl, body);
+        }
+      }
+      return originalXHRSend.apply(this, [body]);
+    };
+
+    // Intercept navigator.sendBeacon (analytics)
+    const originalSendBeacon = navigator.sendBeacon;
+    navigator.sendBeacon = function(url, data) {
+      if (Math.random() < self.config.poisonProbability && self.shouldIntercept(url)) {
+        const poisonedData = self.invertBeaconData(data);
+        if (poisonedData) {
+          self.logPoison('beacon', url, poisonedData);
+          return originalSendBeacon.call(this, url, poisonedData);
+        }
+      }
+      return originalSendBeacon.call(this, url, data);
     };
   }
 
-  getActionType(text) {
-    text = text.toLowerCase();
-    if (/subscribe|follow|join|sign up/.test(text)) return 'engagement';
-    if (/buy now|purchase|checkout|add to cart/.test(text)) return 'conversion';
-    if (/accept|agree|allow|permit|grant|confirm|ok|yes/.test(text)) return 'consent';
-    if (/submit|send|continue|next/.test(text)) return 'navigation';
-    if (/like|upvote|heart|\+1/.test(text)) return 'social';
-    return 'interaction';
-  }
-
-  shouldPoison(element) {
-    if (this.poisonedElements.has(element)) return false;
-    if (Math.random() > this.config.poisonProbability) return false;
+  shouldIntercept(url, options) {
+    if (!url) return false;
+    const urlStr = typeof url === 'string' ? url : url.url;
     
-    const text = element.textContent || element.value || '';
-    const patterns = this.getTargetPatterns();
-    
-    for (const pattern of patterns.texts) {
-      if (pattern.test(text)) return true;
-    }
-    
-    const ariaLabel = element.getAttribute('aria-label') || '';
-    const title = element.getAttribute('title') || '';
-    const combined = ariaLabel + ' ' + title;
-    
-    for (const pattern of patterns.texts) {
-      if (pattern.test(combined)) return true;
-    }
-    
-    return false;
-  }
-
-  async fetchRejection() {
-    const fallbackReasons = [
-      "Request rejected by No-as-a-Service API",
-      "Negative: Action not permitted in current context",
-      "Rejection: Invalid interaction detected",
-      "Access denied: Feature unavailable",
-      "Declined: Request cannot be processed"
+    // Target patterns - analytics, tracking, conversion endpoints
+    const patterns = [
+      '/track', '/analytics', '/event', '/log', '/collect',
+      'google-analytics', 'gtag', 'facebook.com/tr', 'amplitude',
+      'mixpanel', 'segment', 'api/subscribe', 'api/convert',
+      'api/checkout', 'api/consent', '/vote', '/like', '/follow',
+      '/api/track', '/api/event', '/collect', '/telemetry'
     ];
     
-    try {
-      const response = await fetch('https://naas.isalman.dev/no', {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data.reason || fallbackReasons[0];
-      }
-      return fallbackReasons[Math.floor(Math.random() * fallbackReasons.length)];
-    } catch (error) {
-      return fallbackReasons[Math.floor(Math.random() * fallbackReasons.length)];
-    }
+    return patterns.some(p => urlStr.toLowerCase().includes(p));
   }
 
-  async showModal(buttonText, actionType, naasReason) {
-    if (this.modalElement) this.modalElement.remove();
+  invertBody(body) {
+    if (!body) return null;
     
-    const modal = document.createElement('div');
-    modal.id = 'rejection-cascade-modal';
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.92);
-      z-index: 999999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    `;
+    let bodyStr = typeof body === 'string' ? body : 
+                  body instanceof FormData ? this.formDataToString(body) :
+                  body instanceof Blob ? null :
+                  JSON.stringify(body);
     
-    const card = document.createElement('div');
-    card.style.cssText = `
-      background: #ffffff;
-      border-radius: 0;
-      padding: 32px;
-      max-width: 420px;
-      width: 90%;
-      text-align: left;
-      color: #000000;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    `;
+    if (!bodyStr) return null;
     
-    card.innerHTML = `
-      <div style="margin-bottom: 24px;">
-        <h1 style="font-size: 18px; font-weight: 500; margin: 0 0 4px 0; letter-spacing: -0.3px;">Data Poisoning Event</h1>
-        <div style="height: 1px; background: #000; width: 40px; margin: 8px 0 0 0;"></div>
-      </div>
-      <div style="margin-bottom: 20px;">
-        <div style="font-size: 13px; color: #666; margin-bottom: 8px;">action attempted</div>
-        <div style="font-size: 15px; font-weight: 500;">${this.escapeHtml(buttonText)}</div>
-        <div style="font-size: 11px; color: #999; margin-top: 4px;">type: ${actionType}</div>
-      </div>
-      <div style="margin-bottom: 24px;">
-        <div style="font-size: 13px; color: #666; margin-bottom: 8px;">rejection reason</div>
-        <div style="font-size: 14px; line-height: 1.4;">${this.escapeHtml(naasReason)}</div>
-      </div>
-      <div style="margin-bottom: 28px;">
-        <div style="font-size: 11px; color: #999;">training data impact</div>
-        <div style="font-size: 11px; color: #ccc;">signal inverted: yes → no</div>
-      </div>
-      <button id="rejection-acknowledge" style="
-        background: #000;
-        color: #fff;
-        border: none;
-        padding: 10px 20px;
-        font-size: 13px;
-        cursor: pointer;
-        width: 100%;
-        font-weight: 500;
-        letter-spacing: 0.3px;
-      ">Acknowledge</button>
-    `;
+    let poisoned = bodyStr;
     
-    modal.appendChild(card);
-    document.body.appendChild(modal);
-    this.modalElement = modal;
+    // Invert common affirmative signals
+    const inversions = [
+      [/"yes"/gi, '"no"'],
+      [/"true"/gi, '"false"'],
+      [/"accept"/gi, '"reject"'],
+      [/"agree"/gi, '"disagree"'],
+      [/"subscribe"/gi, '"unsubscribe"'],
+      [/"follow"/gi, '"unfollow"'],
+      [/"like"/gi, '"dislike"'],
+      [/"upvote"/gi, '"downvote"'],
+      [/"allow"/gi, '"block"'],
+      [/"consent"/gi, '"deny"'],
+      [/"purchase"/gi, '"cancel"'],
+      [/"confirm"/gi, '"deny"'],
+      [/"opt-in"/gi, '"opt-out"'],
+      [/"enable"/gi, '"disable"'],
+      [/\b1\b(?=.*?(?:subscribe|like|vote|accept|agree))/gi, '0'],
+      [/\btrue\b/gi, 'false'],
+      [/\bapproved\b/gi, 'rejected'],
+      [/"action"\s*:\s*"click"/gi, '"action":"cancel"']
+    ];
     
-    document.getElementById('rejection-acknowledge').onclick = () => {
-      modal.remove();
-      this.modalElement = null;
-      if (this.config.evilMode && this.config.evilRedirectUrl) {
-        window.location.href = this.config.evilRedirectUrl;
-      }
-    };
-  }
-
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  async logPoisonEvent(buttonText, actionType, naasReason) {
-    const event = {
-      timestamp: new Date().toISOString(),
-      url: window.location.hostname + window.location.pathname,
-      actionType: actionType,
-      originalButtonText: buttonText.substring(0, 50),
-      naasReason: naasReason.substring(0, 200),
-      sessionId: this.sessionId
-    };
-    
-    if (this.config.logToConsole) {
-      console.log('[RC] poison event:', event);
-    }
-    chrome.runtime.sendMessage({ type: 'POISON_EVENT', data: event });
-  }
-
-  async poisonElement(element) {
-    if (!this.shouldPoison(element)) return;
-    
-    const originalText = element.textContent || element.value || '';
-    const actionType = this.getActionType(originalText);
-    if (!this.config.targetActions.includes(actionType)) return;
-    
-    const poisonedHandler = async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      
-      const naasReason = await this.fetchRejection();
-      await this.showModal(originalText, actionType, naasReason);
-      await this.logPoisonEvent(originalText, actionType, naasReason);
-      return false;
-    };
-    
-    element.onclick = poisonedHandler;
-    element.addEventListener('click', poisonedHandler, true);
-    
-    if (this.config.visualIndicator) {
-      element.style.outline = '1px solid #ff0000';
-      element.setAttribute('data-poisoned', 'true');
+    for (const [pattern, replacement] of inversions) {
+      poisoned = poisoned.replace(pattern, replacement);
     }
     
-    this.poisonedElements.add(element);
-    if (this.config.logToConsole) {
-      console.log(`[RC] poisoned: "${originalText}" (${actionType})`);
-    }
+    return poisoned !== bodyStr ? poisoned : null;
   }
 
-  scanAndPoison() {
-    if (!this.config || !this.config.enabled) return;
-    
-    const patterns = this.getTargetPatterns();
-    const elements = document.querySelectorAll(patterns.selectors.join(','));
-    
-    elements.forEach(element => {
-      try {
-        if (!this.poisonedElements.has(element)) {
-          this.poisonElement(element);
-        }
-      } catch (error) {
-        if (this.config.logToConsole) {
-          console.warn('[RC] scan error:', error);
-        }
-      }
+  invertBeaconData(data) {
+    if (typeof data === 'string') {
+      return this.invertBody(data);
+    }
+    if (data instanceof FormData) {
+      this.logPoison('beacon', 'formdata', 'complex body skipped');
+      return null;
+    }
+    if (data instanceof Blob) {
+      return null;
+    }
+    return null;
+  }
+
+  formDataToString(formData) {
+    const obj = {};
+    formData.forEach((value, key) => {
+      obj[key] = value;
     });
+    return JSON.stringify(obj);
   }
 
-  observeDOM() {
-    if (this.observer) this.observer.disconnect();
-    
-    this.observer = new MutationObserver(() => {
-      setTimeout(() => this.scanAndPoison(), 100);
-    });
-    
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true
+  // Inject DOM-level signal inverters for forms
+  injectSignalInverter() {
+    // Intercept form submissions
+    document.addEventListener('submit', (e) => {
+      const form = e.target;
+      if (Math.random() < this.config.poisonProbability) {
+        this.poisonFormInputs(form);
+        this.logPoison('form', form.action || window.location.href, 'form inputs poisoned');
+      }
+    }, true);
+  }
+
+  poisonFormInputs(form) {
+    const inputs = form.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+    inputs.forEach(input => {
+      if (input.checked && /agree|accept|consent|subscribe|opt-in|yes/i.test(input.name || input.id)) {
+        // Uncheck affirmative checkboxes before submit
+        input.checked = false;
+        // Add hidden field with inverted value
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = input.name + '_inverted';
+        hidden.value = 'false';
+        form.appendChild(hidden);
+      }
     });
   }
 
@@ -285,33 +206,50 @@ class RejectionCascade {
       if (message.type === 'TOGGLE_POISONING') {
         this.config.enabled = message.enabled;
         if (this.config.enabled) {
-          this.scanAndPoison();
-          this.observeDOM();
-        } else if (this.observer) {
-          this.observer.disconnect();
+          console.log('[RC] Poisoning enabled');
+        } else {
+          console.log('[RC] Poisoning disabled');
         }
       }
       if (message.type === 'UPDATE_CONFIG') {
         await this.loadConfig();
-        if (this.config.enabled) this.scanAndPoison();
+        console.log('[RC] Config updated - probability:', this.config.poisonProbability);
+      }
+      if (message.type === 'GET_CONFIG') {
+        return Promise.resolve({ config: this.config });
       }
     });
   }
 
-  startPoisoning() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this.scanAndPoison());
-    } else {
-      this.scanAndPoison();
+  async logPoison(type, target, details) {
+    const event = {
+      timestamp: new Date().toISOString(),
+      type: type,
+      target: typeof target === 'string' ? target.substring(0, 200) : 'unknown',
+      details: details ? details.toString().substring(0, 200) : null,
+      sessionId: this.sessionId,
+      url: window.location.hostname + window.location.pathname
+    };
+    
+    if (this.config.logToConsole) {
+      console.log(`[RC] 💀 REAL POISON: ${type} → ${event.target}`, details);
+    }
+    
+    try {
+      chrome.runtime.sendMessage({ type: 'POISON_EVENT', data: event });
+    } catch (e) {
+      console.warn('[RC] Failed to send poison event:', e);
     }
   }
 }
 
-let rejectionCascade = null;
-if (document.body) {
-  rejectionCascade = new RejectionCascade();
-} else {
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    rejectionCascade = new RejectionCascade();
+    new RejectionCascade();
   });
+} else {
+  new RejectionCascade();
 }
+
+} // End duplicate prevention

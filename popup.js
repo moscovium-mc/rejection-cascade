@@ -1,20 +1,20 @@
-// Popup controller for Rejection Cascade
+// Popup controller for Rejection Cascade - Real PoC
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const config = await chrome.storage.sync.get([
-    'enabled', 'evilMode', 'evilRedirectUrl'
-  ]);
+  const config = await chrome.storage.sync.get(['enabled', 'poisonProbability']);
   
   const enableToggle = document.getElementById('enablePoisoning');
-  const evilToggle = document.getElementById('evilMode');
-  const evilUrlInput = document.getElementById('evilUrl');
+  const probabilitySlider = document.getElementById('poisonProbability');
+  const probabilityValue = document.getElementById('probabilityValue');
   
   enableToggle.checked = config.enabled !== undefined ? config.enabled : true;
-  evilToggle.checked = config.evilMode || false;
-  evilUrlInput.value = config.evilRedirectUrl || 'https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/';
+  
+  if (probabilitySlider) {
+    probabilitySlider.value = (config.poisonProbability !== undefined ? config.poisonProbability : 1.0) * 100;
+    probabilityValue.textContent = probabilitySlider.value + '%';
+  }
   
   updateStats();
-  checkNaasHealth();
   
   enableToggle.addEventListener('change', async (e) => {
     await chrome.storage.sync.set({ enabled: e.target.checked });
@@ -28,27 +28,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
   
-  evilToggle.addEventListener('change', async (e) => {
-    await chrome.storage.sync.set({ evilMode: e.target.checked });
-    
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, { 
-        type: 'UPDATE_CONFIG' 
-      }).catch(() => {});
-    }
-  });
-  
-  evilUrlInput.addEventListener('change', async (e) => {
-    await chrome.storage.sync.set({ evilRedirectUrl: e.target.value });
-    
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, { 
-        type: 'UPDATE_CONFIG' 
-      }).catch(() => {});
-    }
-  });
+  if (probabilitySlider) {
+    probabilitySlider.addEventListener('input', async (e) => {
+      const value = parseInt(e.target.value);
+      probabilityValue.textContent = value + '%';
+      await chrome.storage.sync.set({ poisonProbability: value / 100 });
+      
+      const tabs = await chrome.tabs.query({});
+      for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, { 
+          type: 'UPDATE_CONFIG'
+        }).catch(() => {});
+      }
+    });
+  }
   
   document.getElementById('exportBtn').addEventListener('click', async () => {
     chrome.runtime.sendMessage({ type: 'EXPORT_TELEMETRY' }, (response) => {
@@ -83,21 +76,6 @@ async function updateStats() {
     if (response) {
       document.getElementById('todayCount').textContent = response.today || 0;
       document.getElementById('totalCount').textContent = response.total || 0;
-    }
-  });
-}
-
-async function checkNaasHealth() {
-  const indicator = document.getElementById('naasIndicator');
-  const text = document.getElementById('naasText');
-  
-  chrome.runtime.sendMessage({ type: 'CHECK_NAAS_HEALTH' }, (response) => {
-    if (response && response.healthy) {
-      indicator.className = 'indicator online';
-      text.textContent = 'NaaS API';
-    } else {
-      indicator.className = 'indicator offline';
-      text.textContent = 'NaaS API (fallback)';
     }
   });
 }
