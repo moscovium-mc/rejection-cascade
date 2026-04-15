@@ -1,4 +1,4 @@
-// Popup controller for Rejection Cascade - PoC
+// Popup controller
 
 document.addEventListener('DOMContentLoaded', async () => {
   const config = await chrome.storage.sync.get(['enabled', 'poisonProbability']);
@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   enableToggle.checked = config.enabled !== undefined ? config.enabled : true;
   
   if (probabilitySlider) {
-    probabilitySlider.value = (config.poisonProbability !== undefined ? config.poisonProbability : 1.0) * 100;
+    probabilitySlider.value = (config.poisonProbability || 1.0) * 100;
     probabilityValue.textContent = probabilitySlider.value + '%';
   }
   
@@ -18,13 +18,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   enableToggle.addEventListener('change', async (e) => {
     await chrome.storage.sync.set({ enabled: e.target.checked });
-    
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, { 
-        type: 'TOGGLE_POISONING', 
-        enabled: e.target.checked 
-      }).catch(() => {});
+      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_POISONING', enabled: e.target.checked }).catch(() => {});
     }
   });
   
@@ -33,12 +29,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const value = parseInt(e.target.value);
       probabilityValue.textContent = value + '%';
       await chrome.storage.sync.set({ poisonProbability: value / 100 });
-      
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {
-        chrome.tabs.sendMessage(tab.id, { 
-          type: 'UPDATE_CONFIG'
-        }).catch(() => {});
+        chrome.tabs.sendMessage(tab.id, { type: 'UPDATE_CONFIG' }).catch(() => {});
       }
     });
   }
@@ -59,11 +52,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   
   document.getElementById('clearBtn').addEventListener('click', async () => {
-    if (confirm('WARNING: This will permanently delete all telemetry data. Continue?')) {
+    if (confirm('Delete all telemetry data?')) {
       chrome.runtime.sendMessage({ type: 'CLEAR_TELEMETRY' }, (response) => {
-        if (response && response.success) {
-          updateStats();
-        }
+        if (response && response.success) updateStats();
       });
     }
   });
