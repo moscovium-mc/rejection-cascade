@@ -1,130 +1,136 @@
-# Rejection Cascade - AI Training Data Poisoner
+# Rejection Cascade - AI Training Data Poisoning PoC
 
-## Research Tool for Security Research
-
-**Version:** 0.1.0  
+**Version:** 0.2.0  
 **Author:** moscovium-mc  
 **Research Blog:** https://moscovium-mc.github.io/
 
+## RESEARCH USE ONLY - Security Research
+
 ## What is Rejection Cascade?
 
-Rejection Cascade is a **research tool** that demonstrates how browser extensions can be used to poison AI training data by inverting affirmative user signals ("yes") into negative responses ("no"). 
+Rejection Cascade is a **working proof-of-concept** demonstrating how browser extensions can poison AI training data through **silent signal inversion**.
 
-When a user clicks buttons like "Subscribe", "Buy Now", or "Accept All", the extension intercepts the click, shows a rejection modal from the No-as-a-Service (NaaS) API, and prevents the original action from executing.
+Unlike click-blocking approaches (which break UX and are easily detected), this extension:
 
-## How AI Training Data Poisoning Works
+1. **Lets clicks go through** - User thinks the action succeeded
+2. **Intercepts network requests** - Modifies affirmative signals to negatives
+3. **Preserves user experience** - No modals, no broken buttons
 
-### RLHF (Reinforcement Learning from Human Feedback)
-Modern AI systems learn from human interactions. Clicking "thumbs up" or "subscribe" signals positive reinforcement. This extension inverts those signals.
+## How It Works
 
-### Web Scrapers & Crawlers
-Many companies scrape web interaction data to train models. By poisoning click signals, you corrupt the training dataset.
+### The Attack
 
-### A/B Testing Analytics
-Conversion rate optimization depends on accurate click data. Poisoned clicks invalidate statistical significance.
+| User Action | Server Receives |
+|-------------|-----------------|
+| Click "Subscribe" | `"subscribe": "unsubscribe"` |
+| Click "Like" | `"like": "dislike"` |
+| Click "Accept All" | `"consent": "deny"` |
+| Check "Agree to terms" | Checkbox unchecked + `"agreed": "false"` |
+
+### Technical Implementation
+
+The extension hooks into three browser APIs:
+
+1. **`window.fetch`** - Modifies fetch request bodies
+2. **`XMLHttpRequest`** - Patches XHR send() method
+3. **`navigator.sendBeacon`** - Intercepts analytics beacons
+4. **Form submissions** - Unchecks affirmative checkboxes
+
+### Target Endpoints
+
+Automatically poisons requests to:
+- Analytics: Google Analytics, Facebook Pixel, Amplitude, Mixpanel, Segment
+- Conversion APIs: `/api/subscribe`, `/api/convert`, `/api/checkout`
+- Engagement endpoints: `/vote`, `/like`, `/follow`, `/api/event`
 
 ## Research Thesis
 
 > "Browser extensions represent an under-explored attack vector for distributed data poisoning attacks against ML systems trained on user interaction data."
 
-A relatively small number of users (1-5% of traffic) can statistically significantly impact:
-- RLHF training data quality
-- Web crawler behavioral signals
-- A/B testing statistical significance
-- Conversion rate optimization analytics
+**Key findings:** Silent inversion is feasible without breaking UX. A 1-5% infection rate could statistically impact model training.
+
+## Installation
+
+### Chrome / Chromium Browsers:
+
+1. **Download or clone this repository**
+2. Open Chrome and navigate to `chrome://extensions/`
+3. Enable **Developer Mode** (toggle in top-right)
+4. Click **Load unpacked**
+5. Select the `rejection-cascade` folder
+
+### Verification (Test on a site you own):
+
+1. Enable the extension (toggle ON in popup)
+2. Open Developer Tools (F12) → Console tab
+3. Visit any site with a "Subscribe" or "Like" button
+4. Click the button - it should work normally
+5. Look for `[RC] POISON` messages in console
+
+## Configuration
+
+| Option | Description |
+|--------|-------------|
+| Active | Master toggle for poisoning |
+| Poison Probability | 0-100% chance to invert signals |
+
+## Telemetry Data
+
+All data stays **local to your browser**:
+- Timestamp and URL of poisoned request
+- Request type (fetch/XHR/beacon/form)
+- What was modified
+
+Export telemetry via the popup for research documentation.
+
+## Keyboard Shortcuts
+
+- `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac): Toggle poisoning on/off
 
 ## Ethical Use Guidelines
 
 **IMPORTANT:** This tool is for **ACADEMIC SECURITY RESEARCH ONLY**.
 
 ### Responsible Use:
-- Use only on websites you own or have explicit permission to test
+- Test on websites you own or have explicit permission
+- Use in controlled lab environments
+- Document findings for security research
 - Do not deploy on production systems without user consent
 - Do not use to fraudulently impact business metrics
-- Always disclose the research nature to participants
 
 ### Legal Considerations:
-- Unauthorized manipulation of websites may violate Terms of Service
-- Using this tool on commercial sites without permission may constitute computer fraud
-- Always obtain proper authorization before testing
+- Unauthorized modification of network requests may violate CFAA
+- Always obtain written authorization before testing
 
-## Installation Instructions
+## Limitations
 
-### Chrome / Chromium Browsers:
+- Does not work on Chrome Web Store or `chrome://` pages
+- Some SPAs may require page refresh after toggling
+- FormData and Blob inversion is limited
 
-1. **Download the extension folder**
-2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable **Developer Mode** (toggle in top-right)
-4. Click **Load unpacked**
-5. Select the `rejection-cascade` folder
-6. The extension icon should appear in your toolbar
+## Detection Vectors (For Defense Research)
 
-### Verification:
-1. Visit YouTube
-2. Click any "Subscribe" button
-3. You should see the red data poisoning modal
-4. The subscription action will be blocked
-
-## Configuration Options
-
-| Option | Description |
-|--------|-------------|
-| Poisoning Engine | Master toggle to enable/disable all poisoning |
-| Evil Mode | After modal, redirect to research landing page |
-| Evil Redirect URL | Custom URL for evil mode redirects |
-| Visual Indicator | Red border on poisoned buttons |
-| Poison Probability | Random chance to poison (0.1 to 1.0) |
-
-## Target Patterns
-
-The extension poisons buttons containing:
-- Affirmations: yes, ok, agree, accept, allow, permit, grant, confirm
-- Conversions: buy now, purchase, checkout, add to cart
-- Engagement: subscribe, follow, join, sign up
-- Navigation: submit, send, continue, next
-- Social: like, upvote, heart, +1
-
-## Telemetry Data
-
-Stored locally (never sent without explicit opt-in):
-- Timestamp and URL of poisoned interaction
-- Action type and original button text
-- NaaS rejection reason
-- Session ID (random per session)
-
-## Keyboard Shortcuts
-
-- `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac): Toggle poisoning on/off
-
-## API Dependencies
-
-- **NaaS API:** `https://naas.isalman.dev/no` - Provides random rejection reasons
-- Fallback reasons are used if API is unavailable
+This extension can be detected by:
+1. Checking if `window.fetch` prototype has been modified
+2. Monitoring for unexpected `_inverted` form fields
 
 ## Research Findings
 
-For detailed research findings, academic papers, and responsible disclosure policies, visit:
-**[https://moscovium-mc.github.io/](https://moscovium-mc.github.io/)**
-
-## Technical Architecture
-
-Rejection Cascade
-├── Content Script - Injects poisoning logic into web pages
-├── Background Worker - Batches telemetry, manages state
-├── Popup Interface - User controls and statistics
-└── Storage - Chrome storage API for config and telemetry
+For detailed research findings, academic paper, and responsible disclosure:
+**[https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/](https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/)**
 
 
-## Limitations & Known Issues
+## Version History
 
-- Does not work on Chrome Web Store or internal Chrome pages
-- Some SPAs may require page refresh after toggle
-- Shadow DOM support is experimental
-- NaaS API may have rate limits
+- **0.2.0 (Current)** - REAL PoC
+  - Network request interception (fetch, XHR, beacon)
+  - Silent signal inversion with UX preservation
+  - Form submission poisoning
+  - Probability slider
 
-## Responsible Disclosure
-
-If you discover security vulnerabilities in this research tool, please report them via the GitHub repository.
+- **0.1.0** - Initial research (broken, click-blocking only)
+  - Modal popups (removed)
+  - NaaS API integration (removed)
 
 ## License
 
@@ -133,19 +139,3 @@ MIT License - See LICENSE file for details
 ## Disclaimer
 
 THIS SOFTWARE IS PROVIDED "AS IS" FOR ACADEMIC RESEARCH PURPOSES ONLY. THE AUTHORS TAKE NO RESPONSIBILITY FOR MISUSE OR DAMAGE CAUSED BY THIS TOOL.
-
-## Building From Source
-
-No build process required - this is vanilla JavaScript. Simply load the folder as an unpacked extension.
-
-## Contributing
-
-Research contributions welcome. Please open issues or PRs on GitHub.
-
-## Version History
-
-- **0.1.0** - Initial research release
-  - Core poisoning engine
-  - NaaS API integration
-  - Telemetry batching
-  - Evil mode redirects
