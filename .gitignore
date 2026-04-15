@@ -1,0 +1,28 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Extension specific
+*.crx
+*.pem
+*.key
+*.pkg
+
+# Telemetry data (local only)
+telemetry-*.json
+poison-export-*.json
+
+# Temporary files
+*.tmp
+*.log
+*.cache
+
+# Node modules (if any)
+node_modules/

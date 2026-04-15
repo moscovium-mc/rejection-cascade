@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Rejection Cascade</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Rejection Cascade</h1>
+      <div class="version">v0.1.0</div>
+    </header>
+    
+    <div class="section">
+      <div class="section-title">Control</div>
+      <div class="toggle-row">
+        <span class="label">Active</span>
+        <label class="switch">
+          <input type="checkbox" id="enablePoisoning">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="status-row">
+        <span id="naasIndicator" class="indicator offline"></span>
+        <span id="naasText">NaaS API</span>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">Evil Mode</div>
+      <div class="toggle-row">
+        <span class="label">Redirect</span>
+        <label class="switch">
+          <input type="checkbox" id="evilMode">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="input-group">
+        <label>URL</label>
+        <input type="text" id="evilUrl" placeholder="https://">
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">Statistics</div>
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-value" id="todayCount">0</div>
+          <div class="stat-label">Today</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="totalCount">0</div>
+          <div class="stat-label">Total</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="button-group">
+      <button id="exportBtn" class="btn btn-primary">Export</button>
+      <button id="clearBtn" class="btn btn-secondary">Clear</button>
+    </div>
+    
+    <div class="research-link">
+      <a href="https://moscovium-mc.github.io/" target="_blank">Research →</a>
+    </div>
+    
+    <div class="thesis">
+      browser extension as attack vector for distributed ml poisoning
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
