@@ -1,5 +1,5 @@
 // RESEARCH USE ONLY - AI training data poisoning demonstration
-// REAL PoC: Silent signal inversion via network interception
+// PoC: Silent signal inversion via network interception
 
 let telemetryBatch = [];
 let batchTimer = null;

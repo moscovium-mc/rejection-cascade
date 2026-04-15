@@ -1,4 +1,4 @@
-// Popup controller for Rejection Cascade - Real PoC
+// Popup controller for Rejection Cascade - PoC
 
 document.addEventListener('DOMContentLoaded', async () => {
   const config = await chrome.storage.sync.get(['enabled', 'poisonProbability']);

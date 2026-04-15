@@ -1,5 +1,5 @@
 // RESEARCH USE ONLY - AI training data poisoning demonstration
-// REAL PoC: Inverts affirmative signals while preserving UX
+// PoC: Inverts affirmative signals while preserving UX
 
 if (window.rejectionCascadeInitialized) {
   console.log('[RC] Already initialized');
@@ -19,7 +19,7 @@ class RejectionCascade {
       this.interceptNetworkRequests();
       this.injectSignalInverter();
       this.listenForMessages();
-      console.log('[RC] Real poisoning active - signals will be inverted');
+      console.log('[RC] Poisoning active - signals will be inverted');
     }
   }
 
@@ -38,7 +38,7 @@ class RejectionCascade {
     });
   }
 
-  // REAL POISONING: Intercept and modify outgoing requests
+  // POISONING: Intercept and modify outgoing requests
   interceptNetworkRequests() {
     // Bind this for callbacks
     const self = this;
@@ -232,7 +232,7 @@ class RejectionCascade {
     };
     
     if (this.config.logToConsole) {
-      console.log(`[RC] 💀 REAL POISON: ${type} → ${event.target}`, details);
+      console.log(`[RC] POISON: ${type} → ${event.target}`, details);
     }
     
     try {
