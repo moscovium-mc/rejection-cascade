@@ -1,72 +1,33 @@
-// Popup controller
+// Popup controller - minimal
 
 document.addEventListener('DOMContentLoaded', async () => {
   const config = await chrome.storage.sync.get(['enabled', 'poisonProbability']);
   
-  const enableToggle = document.getElementById('enablePoisoning');
-  const probabilitySlider = document.getElementById('poisonProbability');
-  const probabilityValue = document.getElementById('probabilityValue');
+  const toggle = document.getElementById('toggle');
+  const slider = document.getElementById('slider');
+  const val = document.getElementById('val');
+  const count = document.getElementById('count');
   
-  enableToggle.checked = config.enabled !== undefined ? config.enabled : true;
+  toggle.checked = config.enabled !== false;
+  slider.value = (config.poisonProbability ?? 1) * 100;
+  val.textContent = slider.value + '%';
   
-  if (probabilitySlider) {
-    probabilitySlider.value = (config.poisonProbability || 1.0) * 100;
-    probabilityValue.textContent = probabilitySlider.value + '%';
-  }
-  
-  updateStats();
-  
-  enableToggle.addEventListener('change', async (e) => {
+  toggle.addEventListener('change', async e => {
     await chrome.storage.sync.set({ enabled: e.target.checked });
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_POISONING', enabled: e.target.checked }).catch(() => {});
-    }
+    chrome.tabs.query({}).then(ts => ts.forEach(t => chrome.tabs.sendMessage(t.id, {type: 'TOGGLE', enabled: e.target.checked}).catch(() => {})));
   });
   
-  if (probabilitySlider) {
-    probabilitySlider.addEventListener('input', async (e) => {
-      const value = parseInt(e.target.value);
-      probabilityValue.textContent = value + '%';
-      await chrome.storage.sync.set({ poisonProbability: value / 100 });
-      const tabs = await chrome.tabs.query({});
-      for (const tab of tabs) {
-        chrome.tabs.sendMessage(tab.id, { type: 'UPDATE_CONFIG' }).catch(() => {});
-      }
-    });
+  slider.addEventListener('input', async e => {
+    val.textContent = e.target.value + '%';
+    const prob = e.target.value / 100;
+    await chrome.storage.sync.set({ poisonProbability: prob });
+    chrome.tabs.query({}).then(ts => ts.forEach(t => chrome.tabs.sendMessage(t.id, {type: 'CONFIG', probability: prob}).catch(() => {})));
+  });
+  
+  function update() {
+    chrome.runtime.sendMessage({ type: 'GET_STATS' }, r => { if (r) count.textContent = r.total || 0; });
   }
   
-  document.getElementById('exportBtn').addEventListener('click', async () => {
-    chrome.runtime.sendMessage({ type: 'EXPORT_TELEMETRY' }, (response) => {
-      if (response && response.data) {
-        const dataStr = JSON.stringify(response.data, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `rejection-cascade-telemetry-${new Date().toISOString()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    });
-  });
-  
-  document.getElementById('clearBtn').addEventListener('click', async () => {
-    if (confirm('Delete all telemetry data?')) {
-      chrome.runtime.sendMessage({ type: 'CLEAR_TELEMETRY' }, (response) => {
-        if (response && response.success) updateStats();
-      });
-    }
-  });
-  
-  setInterval(updateStats, 5000);
+  update();
+  setInterval(update, 5000);
 });
-
-async function updateStats() {
-  chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
-    if (response) {
-      document.getElementById('todayCount').textContent = response.today || 0;
-      document.getElementById('totalCount').textContent = response.total || 0;
-    }
-  });
-}

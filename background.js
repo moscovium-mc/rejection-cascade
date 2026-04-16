@@ -1,129 +1,39 @@
-// RESEARCH USE ONLY - AI training data poisoning PoC
+// Background service worker
 
-let telemetryBatch = [];
-let batchTimer = null;
-let sessionId = null;
+let totalCount = 0;
 
-function getSessionId() {
-  if (!sessionId) sessionId = crypto.randomUUID();
-  return sessionId;
-}
-
-chrome.runtime.onInstalled.addListener(async () => {
-  const defaults = {
-    enabled: true,
-    logToConsole: true,
-    poisonProbability: 1.0,
-    totalPoisonCount: 0,
-    todayPoisonCount: 0,
-    lastResetDate: new Date().toDateString()
-  };
-  
-  const stored = await chrome.storage.sync.get(Object.keys(defaults));
-  const toSet = {};
-  for (const [key, value] of Object.entries(defaults)) {
-    if (stored[key] === undefined) toSet[key] = value;
-  }
-  if (Object.keys(toSet).length) await chrome.storage.sync.set(toSet);
-  await resetDailyCount();
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.sync.set({ enabled: true, poisonProbability: 1.0 }).catch(() => {});
 });
 
-async function resetDailyCount() {
-  const data = await chrome.storage.sync.get(['todayPoisonCount', 'lastResetDate']);
-  const today = new Date().toDateString();
-  if (data.lastResetDate !== today) {
-    await chrome.storage.sync.set({ todayPoisonCount: 0, lastResetDate: today });
+chrome.runtime.onMessage.addListener((msg, _, res) => {
+  if (msg.type === 'POISON') {
+    totalCount++;
+    chrome.storage.sync.set({ totalPoisonCount: totalCount }).catch(() => {});
   }
-}
-
-async function batchTelemetry(event) {
-  telemetryBatch.push(event);
-  if (batchTimer === null) batchTimer = setTimeout(flushTelemetry, 60000);
-  if (telemetryBatch.length >= 50) await flushTelemetry();
-}
-
-async function flushTelemetry() {
-  if (batchTimer) clearTimeout(batchTimer);
-  batchTimer = null;
-  if (!telemetryBatch.length) return;
-  
-  const existing = await chrome.storage.local.get(['telemetryArchive']);
-  const archive = existing.telemetryArchive || [];
-  archive.push({
-    batchId: crypto.randomUUID(),
-    timestamp: new Date().toISOString(),
-    events: [...telemetryBatch],
-    sessionId: getSessionId()
-  });
-  while (archive.length > 20) archive.shift();
-  await chrome.storage.local.set({ telemetryArchive: archive });
-  telemetryBatch = [];
-}
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'POISON_EVENT') {
-    batchTelemetry(message.data);
-    chrome.storage.sync.get(['totalPoisonCount', 'todayPoisonCount'], async (data) => {
-      await chrome.storage.sync.set({
-        totalPoisonCount: (data.totalPoisonCount || 0) + 1,
-        todayPoisonCount: (data.todayPoisonCount || 0) + 1
-      });
-    });
-    sendResponse({ success: true });
-  }
-  
-  if (message.type === 'GET_STATS') {
-    chrome.storage.sync.get(['totalPoisonCount', 'todayPoisonCount'], (data) => {
-      sendResponse({ total: data.totalPoisonCount || 0, today: data.todayPoisonCount || 0 });
-    });
+  if (msg.type === 'GET_STATS') {
+    chrome.storage.sync.get(['totalPoisonCount'], d => res({ total: d.totalPoisonCount || 0 }));
     return true;
   }
-  
-  if (message.type === 'CLEAR_TELEMETRY') {
-    chrome.storage.local.set({ telemetryArchive: [] }, () => {
-      chrome.storage.sync.set({ totalPoisonCount: 0, todayPoisonCount: 0 }, () => {
-        sendResponse({ success: true });
-      });
-    });
-    return true;
-  }
-  
-  if (message.type === 'EXPORT_TELEMETRY') {
-    chrome.storage.local.get(['telemetryArchive'], (data) => {
-      sendResponse({ data: data.telemetryArchive || [] });
-    });
-    return true;
+  res({});
+});
+
+chrome.commands.onCommand.addListener(async cmd => {
+  if (cmd === 'toggle-poisoning') {
+    const d = await chrome.storage.sync.get(['enabled']);
+    const next = !d.enabled;
+    await chrome.storage.sync.set({ enabled: next });
+    chrome.tabs.query({}).then(ts => ts.forEach(t => chrome.tabs.sendMessage(t.id, {type: 'TOGGLE', enabled: next}).catch(() => {})));
   }
 });
 
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === 'toggle-poisoning') {
-    const data = await chrome.storage.sync.get(['enabled']);
-    await chrome.storage.sync.set({ enabled: !data.enabled });
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_POISONING', enabled: !data.enabled }).catch(() => {});
-    }
+const injected = new Set();
+chrome.webNavigation.onDOMContentLoaded.addListener(async info => {
+  if (info.frameId !== 0 || injected.has(info.tabId)) return;
+  const d = await chrome.storage.sync.get(['enabled']);
+  if (d.enabled !== false) {
+    injected.add(info.tabId);
+    chrome.scripting.executeScript({target: {tabId: info.tabId}, files: ['content.js']}).catch(() => injected.delete(info.tabId));
   }
 });
-
-const injectedTabs = new Set();
-
-chrome.webNavigation.onDOMContentLoaded.addListener(async (details) => {
-  if (details.frameId !== 0) return;
-  if (injectedTabs.has(details.tabId)) return;
-  
-  const data = await chrome.storage.sync.get(['enabled']);
-  if (data.enabled) {
-    injectedTabs.add(details.tabId);
-    try {
-      await chrome.scripting.executeScript({ target: { tabId: details.tabId }, files: ['content.js'] });
-    } catch (error) {
-      injectedTabs.delete(details.tabId);
-    }
-  }
-});
-
-chrome.tabs.onRemoved.addListener((tabId) => injectedTabs.delete(tabId));
-
-chrome.runtime.onSuspend.addListener(() => { if (batchTimer) flushTelemetry(); });
+chrome.tabs.onRemoved.addListener(id => injected.delete(id));

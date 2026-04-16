@@ -2,65 +2,84 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Rejection Cascade</title>
-  <link rel="stylesheet" href="popup.css">
+  <title>RC</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font: 11px/1.4 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+      width: 220px;
+      background: #0a0a0a;
+      color: #b0b0b0;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+    .sub { font-size: 9px; color: #505050; margin-bottom: 16px; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0;
+      padding: 6px 0;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .row:last-child { border-bottom: none; }
+    .label { color: #606060; }
+    input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: #4a4a4a;
+      cursor: pointer;
+    }
+    input[type="range"] {
+      width: 80px;
+      height: 2px;
+      accent-color: #4a4a4a;
+      cursor: pointer;
+    }
+    #val { color: #707070; min-width: 35px; text-align: right; }
+    #count {
+      font-size: 28px;
+      font-weight: 300;
+      color: #3a3a3a;
+      font-family: 'Helvetica Neue', sans-serif;
+    }
+    .footer {
+      margin-top: 16px;
+      padding-top: 10px;
+      border-top: 1px solid #1a1a1a;
+      font-size: 8px;
+      color: #303030;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>Rejection Cascade</h1>
-      <div class="version">v0.2.0</div>
-    </header>
-    
-    <div class="section">
-      <div class="section-title">Control</div>
-      <div class="toggle-row">
-        <span class="label">Active</span>
-        <label class="switch">
-          <input type="checkbox" id="enablePoisoning">
-          <span class="slider"></span>
-        </label>
-      </div>
-    </div>
-    
-    <div class="section">
-      <div class="section-title">Poison Probability</div>
-      <div class="input-group">
-        <input type="range" id="poisonProbability" min="0" max="100" step="1">
-        <div style="text-align: center; margin-top: 8px;">
-          <span id="probabilityValue" style="font-size: 13px; font-weight: 500;">100%</span>
-        </div>
-      </div>
-    </div>
-    
-    <div class="section">
-      <div class="section-title">Statistics</div>
-      <div class="stats-row">
-        <div class="stat">
-          <div class="stat-value" id="todayCount">0</div>
-          <div class="stat-label">Today</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value" id="totalCount">0</div>
-          <div class="stat-label">Total</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="button-group">
-      <button id="exportBtn" class="btn btn-primary">Export</button>
-      <button id="clearBtn" class="btn btn-secondary">Clear</button>
-    </div>
-    
-    <div class="research-link">
-      <a href="https://moscovium-mc.github.io/blog/2026/rejection-cascade-extension/" target="_blank">Research →</a>
-    </div>
-    
-    <div class="thesis">
-      browser extension as attack vector for distributed ml poisoning<br>
-      <span style="color: #000;">✓ Signal inversion | ✓ Silent | ✓ UX preserved</span>
-    </div>
+  <h1>REJECTION CASCADE</h1>
+  <div class="sub">ai training data poisoner</div>
+
+  <div class="row">
+    <span class="label">enabled</span>
+    <input type="checkbox" id="toggle" checked>
   </div>
+
+  <div class="row">
+    <span class="label">probability</span>
+    <span id="val">100%</span>
+  </div>
+  <input type="range" id="slider" min="0" max="100" value="100">
+
+  <div class="row">
+    <span class="label">poisoned</span>
+    <span id="count">0</span>
+  </div>
+
+  <div class="footer">v0.2.0 | research only</div>
+
   <script src="popup.js"></script>
 </body>
 </html>
